@@ -121,8 +121,8 @@ avg_glucose_level       float64      3979        0       0.00
 bmi                     float64       418      201       3.93
 smoking_status           object         4        0       0.00
 stroke                    int64         2        0       0.00
-bmi_missing_flag          int64         2        0       0.00
-is_senior                 int64         2        0       0.00
+bmi_missing_flag          int32         2        0       0.00
+is_senior                 int32         2        0       0.00
 avg_glucose_level_log   float64      3979        0       0.00
 age_bucket             category         5        0       0.00
 ==== Cell 7 ====
@@ -719,21 +719,21 @@ Outputs:
 Top logistic regression coefficients (train + validation fit):
 -- Output 2 (display_data) --
                          feature  coefficient  abs_coeff
-17       cat__work_type_children     1.735186   1.735186
-0                       num__age     1.696058   1.696058
-28           cat__age_bucket_<30    -1.349514   1.349514
-25         cat__age_bucket_45-59     1.228852   1.228852
-16  cat__work_type_Self-employed    -0.809753   0.809753
-13       cat__work_type_Govt_job    -0.638423   0.638423
-15        cat__work_type_Private    -0.593921   0.593921
-1         num__avg_glucose_level     0.429947   0.429947
-12         cat__ever_married_Yes    -0.414381   0.414381
+17       cat__work_type_children     1.735341   1.735341
+0                       num__age     1.696054   1.696054
+28           cat__age_bucket_<30    -1.349704   1.349704
+25         cat__age_bucket_45-59     1.228953   1.228953
+16  cat__work_type_Self-employed    -0.809931   0.809931
+13       cat__work_type_Govt_job    -0.638602   0.638602
+15        cat__work_type_Private    -0.594098   0.594098
+1         num__avg_glucose_level     0.429977   0.429977
+12         cat__ever_married_Yes    -0.414367   0.414367
 6          num__bmi_missing_flag     0.347961   0.347961
-7                 num__is_senior     0.321088   0.321088
-20   cat__smoking_status_Unknown    -0.298598   0.298598
-24         cat__age_bucket_30-44    -0.289457   0.289457
-2     num__avg_glucose_level_log    -0.260375   0.260375
-9               cat__gender_Male    -0.259443   0.259443-- Output 3 (stream) --
+7                 num__is_senior     0.321127   0.321127
+20   cat__smoking_status_Unknown    -0.298595   0.298595
+24         cat__age_bucket_30-44    -0.289360   0.289360
+2     num__avg_glucose_level_log    -0.260406   0.260406
+9               cat__gender_Male    -0.259419   0.259419-- Output 3 (stream) --
 Top random forest feature importances:
 -- Output 4 (display_data) --
                              feature  importance
@@ -752,3 +752,780 @@ Top random forest feature importances:
 25             cat__age_bucket_45-59    0.016254
 16      cat__work_type_Self-employed    0.015305
 15            cat__work_type_Private    0.015014
+==== Cell 30 ====
+Source:
+from sklearn.metrics import precision_recall_curve
+
+metric_subset = ['roc_auc', 'precision', 'recall', 'f1', 'balanced_accuracy']
+test_fitted_models = {}
+test_results = {}
+for name, model in candidate_models.items():
+    fitted = clone(model).fit(X_train_full, y_train_full)
+    test_fitted_models[name] = fitted
+    test_results[name] = performance_report(fitted, X_test, y_test)
+
+test_df = pd.DataFrame(test_results).T
+comparison_df = pd.concat(
+    {
+        'validation': val_df[metric_subset],
+        'test': test_df[metric_subset]
+    },
+    axis=0,
+    names=['split']
+)
+comparison_df.index.set_names(['split', 'model'], inplace=True)
+display(comparison_df)
+
+plt.figure(figsize=(6, 5))
+for name, fitted in test_fitted_models.items():
+    y_scores = fitted.predict_proba(X_test)[:, 1]
+    precision, recall, _ = precision_recall_curve(y_test, y_scores)
+    plt.plot(recall, precision, label=name)
+plt.axhline(y_test.mean(), color='gray', linestyle='--', label='No-skill (prevalence)')
+plt.xlabel('Recall')
+plt.ylabel('Precision')
+plt.title('Precision–Recall curves (test split)')
+plt.legend()
+plt.show()
+Outputs:
+-- Output 1 (display_data) --
+                                  roc_auc  precision  recall        f1  \
+split      model                                                         
+validation Logistic (PCA tuned)  0.837675   0.130435    0.78  0.223496   
+           Random Forest         0.818395   0.625000    0.10  0.172414   
+           Gradient Boosting     0.828652   0.666667    0.04  0.075472   
+test       Logistic (PCA tuned)  0.835802   0.139932    0.82  0.239067   
+           Random Forest         0.816276   0.600000    0.12  0.200000   
+           Gradient Boosting     0.832603   0.142857    0.02  0.035088   
+
+                                 balanced_accuracy  
+split      model                                    
+validation Logistic (PCA tuned)           0.756255  
+           Random Forest                  0.548457  
+           Gradient Boosting              0.519486  
+test       Logistic (PCA tuned)           0.780370  
+           Random Forest                  0.557942  
+           Gradient Boosting              0.506914  -- Output 2 (display_data) --
+<Figure size 600x500 with 1 Axes>
+==== Cell 32 ====
+Source:
+preprocessor_for_full_pca = clone(preprocessor)
+preprocessed_full = preprocessor_for_full_pca.fit_transform(X_train)
+if hasattr(preprocessed_full, "toarray"):
+    preprocessed_full = preprocessed_full.toarray()
+
+full_pca = PCA().fit(preprocessed_full)
+cumvar = np.cumsum(full_pca.explained_variance_ratio_)
+components = np.arange(1, len(cumvar) + 1)
+max_components_to_plot = min(30, len(components))
+
+plt.figure(figsize=(7, 4))
+plt.plot(components[:max_components_to_plot], cumvar[:max_components_to_plot], marker='o')
+plt.axhline(0.5, color='red', linestyle='--', linewidth=1, label='50% variance')
+plt.xlabel('Number of components')
+plt.ylabel('Cumulative explained variance')
+plt.title('PCA cumulative variance (training set)')
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+age_bucket_metrics = evaluate_by_group(best_model, X_test, y_test, 'age_bucket')
+print('Age bucket performance (test split):')
+display(age_bucket_metrics[['precision', 'recall', 'f1', 'balanced_accuracy', 'n_samples']])
+
+age_bucket_targets = (
+    pd.concat([X_test[['age_bucket']], y_test.rename('stroke')], axis=1)
+      .groupby('age_bucket')['stroke']
+      .agg(['count', 'sum'])
+      .rename(columns={'count': 'n_samples', 'sum': 'positives'})
+)
+age_bucket_targets['prevalence_%'] = (age_bucket_targets['positives'] / age_bucket_targets['n_samples'] * 100).round(2)
+print('Stroke prevalence by age bucket (test split):')
+display(age_bucket_targets)
+Outputs:
+-- Output 1 (display_data) --
+<Figure size 700x400 with 1 Axes>-- Output 2 (stream) --
+Age bucket performance (test split):
+-- Output 3 (display_data) --
+       precision  recall        f1  balanced_accuracy  n_samples
+group                                                           
+60-79   0.151351     1.0  0.262911           0.609453        229
+30-44   0.000000     0.0  0.000000           0.500000        207
+<30     0.000000     0.0  0.000000           0.500000        320
+45-59   0.046154     0.5  0.084507           0.607143        223-- Output 4 (stream) --
+Stroke prevalence by age bucket (test split):
+-- Output 5 (display_data) --
+            n_samples  positives  prevalence_%
+age_bucket                                    
+<30               320          1          0.31
+30-44             207          5          2.42
+45-59             223          6          2.69
+60-79             229         28         12.23
+80+                43         10         23.26
+==== Cell 34 ====
+Source:
+from imblearn.over_sampling import SMOTE
+from imblearn.pipeline import Pipeline as ImbPipeline
+from imblearn.ensemble import BalancedRandomForestClassifier
+Outputs:
+[no output]
+
+==== Cell 35 ====
+Source:
+def make_dense_step():
+    return FunctionTransformer(to_dense_matrix, accept_sparse=True)
+
+smote_log_reg_pipeline = ImbPipeline(steps=[
+    ('preprocess', preprocessor),
+    ('to_dense', make_dense_step()),
+    ('smote', SMOTE(random_state=42, k_neighbors=5)),
+    ('model', LogisticRegression(max_iter=1000, solver='liblinear', C=0.5))
+])
+
+balanced_rf_pipeline = ImbPipeline(steps=[
+    ('preprocess', preprocessor),
+    ('to_dense', make_dense_step()),
+    ('model', BalancedRandomForestClassifier(
+        n_estimators=400,
+        max_depth=None,
+        min_samples_split=5,
+        min_samples_leaf=2,
+        sampling_strategy='auto',
+        random_state=42
+    ))
+])
+Outputs:
+[no output]
+
+==== Cell 36 ====
+Source:
+resampled_models = {
+    'Logistic + SMOTE': smote_log_reg_pipeline,
+    'Balanced Random Forest': balanced_rf_pipeline
+}
+
+resampled_cv = {
+    name: evaluate_model(pipeline, X_train, y_train, cv)
+    for name, pipeline in resampled_models.items()
+}
+resampled_cv_df = pd.concat(resampled_cv, axis=1)
+print('Cross-validation metrics (mean ± std):')
+display(resampled_cv_df)
+
+if 'Logistic Regression' in comparison.columns.get_level_values(0):
+    pr_metrics = ['precision', 'recall', 'f1', 'balanced_accuracy']
+    logistic_vs_smote = pd.DataFrame({
+        'Original Logistic (CV mean)': log_reg_cv_results.loc[pr_metrics, 'mean'],
+        'Logistic + SMOTE (CV mean)': resampled_cv['Logistic + SMOTE'].loc[pr_metrics, 'mean']
+    })
+    print('Precision/recall comparison vs. original logistic pipeline (CV mean):')
+    display(logistic_vs_smote)
+Outputs:
+-- Output 1 (stream) --
+Cross-validation metrics (mean ± std):
+-- Output 2 (display_data) --
+                  Logistic + SMOTE           Balanced Random Forest          
+                              mean       std                   mean       std
+roc_auc                   0.852904  0.028492               0.851698  0.032142
+precision                 0.140862  0.009546               0.121853  0.003714
+recall                    0.778391  0.099219               0.872184  0.080342
+f1                        0.238330  0.017088               0.213730  0.007665
+balanced_accuracy         0.768002  0.041382               0.775644  0.029070-- Output 3 (stream) --
+Precision/recall comparison vs. original logistic pipeline (CV mean):
+-- Output 4 (display_data) --
+                   Original Logistic (CV mean)  Logistic + SMOTE (CV mean)
+precision                             0.134546                    0.140862
+recall                                0.778621                    0.778391
+f1                                    0.229259                    0.238330
+balanced_accuracy                     0.761775                    0.768002
+==== Cell 37 ====
+Source:
+resampled_val_metrics = {}
+resampled_test_metrics = {}
+resampled_models_full = {}
+
+for name, pipeline in resampled_models.items():
+    fitted = clone(pipeline).fit(X_train, y_train)
+    resampled_val_metrics[name] = performance_report(fitted, X_val, y_val)
+
+    fitted_full = clone(pipeline).fit(X_train_full, y_train_full)
+    resampled_models_full[name] = fitted_full
+    resampled_test_metrics[name] = performance_report(fitted_full, X_test, y_test)
+
+print('Validation metrics after applying resampling / class-balanced ensembles:')
+display(pd.DataFrame(resampled_val_metrics).T)
+
+print('Test metrics (train+validation refit):')
+display(pd.DataFrame(resampled_test_metrics).T)
+
+smote_best_model = resampled_models_full['Logistic + SMOTE']
+Outputs:
+-- Output 1 (stream) --
+Validation metrics after applying resampling / class-balanced ensembles:
+-- Output 2 (display_data) --
+                         roc_auc  accuracy  precision  recall        f1  \
+Logistic + SMOTE        0.830453  0.742661   0.128920    0.74  0.219585   
+Balanced Random Forest  0.839095  0.687867   0.125348    0.90  0.220049   
+
+                        balanced_accuracy  
+Logistic + SMOTE                 0.741399  
+Balanced Random Forest           0.788477  -- Output 3 (stream) --
+Test metrics (train+validation refit):
+-- Output 4 (display_data) --
+                         roc_auc  accuracy  precision  recall        f1  \
+Logistic + SMOTE        0.838148  0.742661   0.136519    0.80  0.233236   
+Balanced Random Forest  0.834342  0.686888   0.118644    0.84  0.207921   
+
+                        balanced_accuracy  
+Logistic + SMOTE                 0.769856  
+Balanced Random Forest           0.759506  
+==== Cell 38 ====
+Source:
+smote_y_pred_test = smote_best_model.predict(X_test)
+smote_y_proba_test = smote_best_model.predict_proba(X_test)[:, 1]
+
+print('Classification report – Logistic + SMOTE (test split):')
+print(classification_report(y_test, smote_y_pred_test, digits=3))
+
+smote_conf_matrix = confusion_matrix(y_test, smote_y_pred_test)
+smote_tn, smote_fp, smote_fn, smote_tp = smote_conf_matrix.ravel()
+smote_false_alarm_ratio = smote_fp / max(smote_tp, 1)
+print(f"False positives per true positive (SMOTE model): {smote_false_alarm_ratio:.2f}:1")
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+ConfusionMatrixDisplay.from_predictions(y_test, smote_y_pred_test, normalize='true', ax=axes[0], cmap='Blues')
+axes[0].set_title('SMOTE logistic – normalized confusion')
+PrecisionRecallDisplay.from_predictions(y_test, smote_y_proba_test, ax=axes[1])
+axes[1].set_title('SMOTE logistic – PR curve')
+plt.tight_layout()
+plt.show()
+Outputs:
+-- Output 1 (stream) --
+Classification report – Logistic + SMOTE (test split):
+              precision    recall  f1-score   support
+
+           0      0.986     0.740     0.845       972
+           1      0.137     0.800     0.233        50
+
+    accuracy                          0.743      1022
+   macro avg      0.561     0.770     0.539      1022
+weighted avg      0.945     0.743     0.815      1022
+
+False positives per true positive (SMOTE model): 6.33:1
+-- Output 2 (display_data) --
+<Figure size 1000x400 with 3 Axes>
+==== Cell 39 ====
+Source:
+def threshold_sweep(models, X, y, thresholds):
+    rows = []
+    for model_name, model in models.items():
+        y_scores = model.predict_proba(X)[:, 1]
+        for thr in thresholds:
+            y_pred = (y_scores >= thr).astype(int)
+            tp = ((y == 1) & (y_pred == 1)).sum()
+            fp = ((y == 0) & (y_pred == 1)).sum()
+            rows.append({
+                'model': model_name,
+                'threshold': round(thr, 2),
+                'precision': precision_score(y, y_pred, zero_division=0),
+                'recall': recall_score(y, y_pred, zero_division=0),
+                'f1': f1_score(y, y_pred, zero_division=0),
+                'balanced_accuracy': balanced_accuracy_score(y, y_pred),
+                'false_pos_per_true_pos': fp / max(tp, 1)
+            })
+    return pd.DataFrame(rows).set_index(['model', 'threshold'])
+
+thresholds = np.linspace(0.2, 0.7, 6)
+threshold_grid = threshold_sweep(
+    {
+        'Logistic (PCA tuned)': best_model,
+        'Logistic + SMOTE': smote_best_model
+    },
+    X_test,
+    y_test,
+    thresholds
+)
+print('Threshold trade-offs on the test split:')
+display(threshold_grid)
+Outputs:
+-- Output 1 (stream) --
+Threshold trade-offs on the test split:
+-- Output 2 (display_data) --
+                                precision  recall        f1  \
+model                threshold                                
+Logistic (PCA tuned) 0.2         0.089286    0.90  0.162455   
+                     0.3         0.091286    0.88  0.165414   
+                     0.4         0.102689    0.84  0.183007   
+                     0.5         0.139932    0.82  0.239067   
+                     0.6         0.174312    0.76  0.283582   
+                     0.7         0.201439    0.56  0.296296   
+Logistic + SMOTE     0.2         0.089069    0.88  0.161765   
+                     0.3         0.094092    0.86  0.169625   
+                     0.4         0.107417    0.84  0.190476   
+                     0.5         0.136519    0.80  0.233236   
+                     0.6         0.175115    0.76  0.284644   
+                     0.7         0.191083    0.60  0.289855   
+
+                                balanced_accuracy  false_pos_per_true_pos  
+model                threshold                                             
+Logistic (PCA tuned) 0.2                 0.713889               10.200000  
+                     0.3                 0.714691                9.954545  
+                     0.4                 0.731214                8.738095  
+                     0.5                 0.780370                6.146341  
+                     0.6                 0.787407                4.736842  
+                     0.7                 0.722901                3.964286  
+Logistic + SMOTE     0.2                 0.708519               10.227273  
+                     0.3                 0.717037                9.627907  
+                     0.4                 0.740473                8.309524  
+                     0.5                 0.769856                6.325000  
+                     0.6                 0.787922                4.710526  
+                     0.7                 0.734671                4.233333  
+==== Cell 40 ====
+Source:
+imbalance_overview = pd.DataFrame({
+    'split': ['train', 'validation', 'test'],
+    'n_samples': [len(X_train), len(X_val), len(X_test)],
+    'positives': [int(y_train.sum()), int(y_val.sum()), int(y_test.sum())]
+})
+imbalance_overview['prevalence_%'] = (imbalance_overview['positives'] / imbalance_overview['n_samples'] * 100).round(2)
+display(imbalance_overview)
+
+best_model_test_metrics = performance_report(best_model, X_test, y_test)
+print("Test metrics for Logistic (PCA tuned):")
+display(pd.Series(best_model_test_metrics))
+
+# Confusion-matrix scaling to a 1,000-patient cohort
+conf_matrix = confusion_matrix(y_test, best_model.predict(X_test))
+tn, fp, fn, tp = conf_matrix.ravel()
+false_alarm_ratio = fp / max(tp, 1)
+scenario_scale = 1000 / y_test.shape[0]
+scenario_counts = (conf_matrix * scenario_scale).round(1)
+scenario_df = pd.DataFrame(
+    scenario_counts,
+    index=['Actual 0 (no stroke)', 'Actual 1 (stroke)'],
+    columns=['Pred 0 (cleared)', 'Pred 1 (flagged)']
+)
+
+print(f"False positives per true positive: {false_alarm_ratio:.1f}:1")
+print("Projected counts for screening 1,000 patients (rounded):")
+display(scenario_df)
+Outputs:
+-- Output 1 (display_data) --
+        split  n_samples  positives  prevalence_%
+0       train       3066        149          4.86
+1  validation       1022         50          4.89
+2        test       1022         50          4.89-- Output 2 (stream) --
+Test metrics for Logistic (PCA tuned):
+-- Output 3 (display_data) --
+roc_auc              0.835802
+accuracy             0.744618
+precision            0.139932
+recall               0.820000
+f1                   0.239067
+balanced_accuracy    0.780370
+dtype: float64-- Output 4 (stream) --
+False positives per true positive: 6.1:1
+Projected counts for screening 1,000 patients (rounded):
+-- Output 5 (display_data) --
+                      Pred 0 (cleared)  Pred 1 (flagged)
+Actual 0 (no stroke)             704.5             246.6
+Actual 1 (stroke)                  8.8              40.1
+==== Cell 44 ====
+Source:
+def add_interaction_features(X_frame):
+    X_aug = X_frame.copy()
+    X_aug['age_hypertension'] = X_aug['age'] * X_aug['hypertension']
+    X_aug['age_heart'] = X_aug['age'] * X_aug['heart_disease']
+    X_aug['glucose_bmi'] = X_aug['avg_glucose_level'] * X_aug['bmi'].fillna(X_aug['bmi'].median())
+    X_aug['senior_glucose'] = X_aug['is_senior'] * X_aug['avg_glucose_level']
+    X_aug['log_glucose_bmi'] = X_aug['avg_glucose_level_log'] * X_aug['bmi'].fillna(X_aug['bmi'].median())
+    X_aug['hypertension_heart'] = X_aug['hypertension'] * X_aug['heart_disease']
+    X_aug['age_bucket_code'] = X_aug['age_bucket'].cat.codes if 'age_bucket' in X_aug else 0
+    X_aug['age_bucket_code_sq'] = X_aug['age_bucket_code'] ** 2
+    return X_aug
+
+interaction_cols = [
+    'age_hypertension', 'age_heart', 'glucose_bmi', 'senior_glucose',
+    'log_glucose_bmi', 'hypertension_heart', 'age_bucket_code', 'age_bucket_code_sq'
+]
+
+X_train_aug = add_interaction_features(X_train)
+X_val_aug = add_interaction_features(X_val)
+X_test_aug = add_interaction_features(X_test)
+X_train_full_aug = add_interaction_features(X_train_full)
+
+advanced_numeric_cols = documented_numeric_cols + interaction_cols
+advanced_categorical_cols = categorical_features  # reuse existing categories
+
+advanced_preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', Pipeline(steps=[
+            ('imputer', SimpleImputer(strategy='median')),
+            ('scaler', StandardScaler())
+        ]), advanced_numeric_cols),
+        ('cat', Pipeline(steps=[
+            ('imputer', SimpleImputer(strategy='most_frequent')),
+            ('onehot', OneHotEncoder(handle_unknown='ignore'))
+        ]), advanced_categorical_cols)
+    ]
+)
+Outputs:
+[no output]
+
+==== Cell 45 ====
+Source:
+def oversample_young_minority(X_frame, y_series, age_threshold=45, multiplier=3):
+    selector = (X_frame['age'] < age_threshold) & (y_series == 1)
+    if selector.sum() == 0 or multiplier <= 1:
+        return X_frame.copy(), y_series.copy()
+    replicated_X = [X_frame]
+    replicated_y = [y_series]
+    for _ in range(multiplier - 1):
+        replicated_X.append(X_frame[selector])
+        replicated_y.append(y_series[selector])
+    X_augmented = pd.concat(replicated_X, axis=0).reset_index(drop=True)
+    y_augmented = pd.concat(replicated_y, axis=0).reset_index(drop=True)
+    return X_augmented, y_augmented
+
+X_train_young_aug, y_train_young_aug = oversample_young_minority(X_train_aug, y_train, age_threshold=45, multiplier=4)
+Outputs:
+[no output]
+
+==== Cell 46 ====
+Source:
+def build_cost_sensitive_logistic(C=0.5, positive_weight=4.0):
+    class_weight = {0: 1.0, 1: positive_weight}
+    return Pipeline(steps=[
+        ('preprocess', advanced_preprocessor),
+        ('model', LogisticRegression(max_iter=1000, solver='liblinear', class_weight=class_weight, C=C))
+    ])
+
+def threshold_metrics(y_true, y_scores, threshold):
+    y_pred = (y_scores >= threshold).astype(int)
+    tp = ((y_true == 1) & (y_pred == 1)).sum()
+    fp = ((y_true == 0) & (y_pred == 1)).sum()
+    return {
+        'precision': precision_score(y_true, y_pred, zero_division=0),
+        'recall': recall_score(y_true, y_pred, zero_division=0),
+        'f1': f1_score(y_true, y_pred, zero_division=0),
+        'balanced_accuracy': balanced_accuracy_score(y_true, y_pred),
+        'false_pos_per_true_pos': fp / max(tp, 1),
+        'tp': tp,
+        'fp': fp
+    }
+
+def find_threshold_for_ratio(y_true, y_scores, thresholds=np.linspace(0.2, 0.8, 13), max_fp_per_tp=3.0):
+    rows = []
+    for thr in thresholds:
+        stats = threshold_metrics(y_true, y_scores, thr)
+        stats['threshold'] = thr
+        rows.append(stats)
+    df_stats = pd.DataFrame(rows)
+    feasible = df_stats[df_stats['false_pos_per_true_pos'] <= max_fp_per_tp]
+    if not feasible.empty:
+        best = feasible.sort_values(['recall', 'precision'], ascending=[False, False]).iloc[0]
+    else:
+        best = df_stats.sort_values('false_pos_per_true_pos').iloc[0]
+    return df_stats, best
+Outputs:
+[no output]
+
+==== Cell 47 ====
+Source:
+cost_sensitive_log_reg = build_cost_sensitive_logistic(C=0.3, positive_weight=5.0)
+cost_sensitive_log_reg.fit(X_train_aug, y_train)
+
+val_scores_cs = cost_sensitive_log_reg.predict_proba(X_val_aug)[:, 1]
+threshold_grid_cs, best_threshold_cs = find_threshold_for_ratio(
+    y_val,
+    val_scores_cs,
+    thresholds=np.linspace(0.2, 0.8, 13),
+    max_fp_per_tp=3.0
+)
+
+print('Cost-sensitive logistic validation threshold sweep (top rows):')
+display(threshold_grid_cs.head())
+print('Best threshold subject to FP:TP constraint:')
+print(best_threshold_cs)
+
+cs_threshold = best_threshold_cs['threshold']
+cs_val_metrics = threshold_metrics(y_val, val_scores_cs, cs_threshold)
+
+cs_test_scores = cost_sensitive_log_reg.predict_proba(X_test_aug)[:, 1]
+cs_test_metrics = threshold_metrics(y_test, cs_test_scores, cs_threshold)
+
+print('Validation metrics @ selected threshold:')
+print(cs_val_metrics)
+print('\nTest metrics @ selected threshold:')
+print(cs_test_metrics)
+Outputs:
+-- Output 1 (stream) --
+Cost-sensitive logistic validation threshold sweep (top rows):
+-- Output 2 (display_data) --
+   precision  recall        f1  balanced_accuracy  false_pos_per_true_pos  tp  \
+0   0.128617    0.80  0.221607           0.760597                6.775000  40   
+1   0.150000    0.72  0.248276           0.755062                5.666667  36   
+2   0.160428    0.60  0.253165           0.719239                5.233333  30   
+3   0.164286    0.46  0.242105           0.669815                5.086957  23   
+4   0.176991    0.40  0.245399           0.652160                4.650000  20   
+
+    fp  threshold  
+0  271       0.20  
+1  204       0.25  
+2  157       0.30  
+3  117       0.35  
+4   93       0.40  -- Output 3 (stream) --
+Best threshold subject to FP:TP constraint:
+precision                  0.260870
+recall                     0.120000
+f1                         0.164384
+balanced_accuracy          0.551255
+false_pos_per_true_pos     2.833333
+tp                         6.000000
+fp                        17.000000
+threshold                  0.650000
+Name: 9, dtype: float64
+Validation metrics @ selected threshold:
+{'precision': 0.2608695652173913, 'recall': 0.12, 'f1': 0.1643835616438356, 'balanced_accuracy': 0.5512551440329219, 'false_pos_per_true_pos': 2.8333333333333335, 'tp': 6, 'fp': 17}
+
+Test metrics @ selected threshold:
+{'precision': 0.21212121212121213, 'recall': 0.14, 'f1': 0.1686746987951807, 'balanced_accuracy': 0.5566255144032921, 'false_pos_per_true_pos': 3.7142857142857144, 'tp': 7, 'fp': 26}
+
+==== Cell 48 ====
+Source:
+smote_log_reg_adv = ImbPipeline(steps=[
+    ('preprocess', advanced_preprocessor),
+    ('to_dense', make_dense_step()),
+    ('smote', SMOTE(random_state=42, k_neighbors=5)),
+    ('model', LogisticRegression(max_iter=1000, solver='liblinear', C=0.5))
+])
+
+balanced_rf_adv = ImbPipeline(steps=[
+    ('preprocess', advanced_preprocessor),
+    ('to_dense', make_dense_step()),
+    ('model', BalancedRandomForestClassifier(
+        n_estimators=500,
+        max_depth=None,
+        min_samples_split=3,
+        min_samples_leaf=1,
+        sampling_strategy='auto',
+        random_state=42
+    ))
+])
+Outputs:
+[no output]
+
+==== Cell 49 ====
+Source:
+base_models = {
+    'cost_sensitive': build_cost_sensitive_logistic(C=0.5, positive_weight=6.0),
+    'smote_logistic': smote_log_reg_adv,
+    'balanced_rf': balanced_rf_adv
+}
+
+fitted_base_models = {
+    name: clone(model).fit(X_train_aug, y_train)
+    for name, model in base_models.items()
+}
+
+val_meta_features = np.column_stack([
+    estimator.predict_proba(X_val_aug)[:, 1]
+    for estimator in fitted_base_models.values()
+])
+
+meta_clf = LogisticRegression(max_iter=1000)
+meta_clf.fit(val_meta_features, y_val)
+
+val_stack_scores = meta_clf.predict_proba(val_meta_features)[:, 1]
+stack_threshold_grid, stack_best_threshold = find_threshold_for_ratio(
+    y_val,
+    val_stack_scores,
+    thresholds=np.linspace(0.2, 0.8, 13),
+    max_fp_per_tp=3.0
+)
+
+print('Stacked ensemble threshold sweep (top rows):')
+display(stack_threshold_grid.head())
+print('Selected stacked threshold:')
+print(stack_best_threshold)
+
+stack_threshold = stack_best_threshold['threshold']
+stack_val_metrics = threshold_metrics(y_val, val_stack_scores, stack_threshold)
+
+# Evaluate on test split
+stack_test_features = np.column_stack([
+    estimator.predict_proba(X_test_aug)[:, 1]
+    for estimator in fitted_base_models.values()
+])
+stack_test_scores = meta_clf.predict_proba(stack_test_features)[:, 1]
+stack_test_metrics = threshold_metrics(y_test, stack_test_scores, stack_threshold)
+
+print('Stacked ensemble validation metrics @ selected threshold:')
+print(stack_val_metrics)
+print('\nStacked ensemble test metrics @ selected threshold:')
+print(stack_test_metrics)
+Outputs:
+-- Output 1 (stream) --
+Stacked ensemble threshold sweep (top rows):
+-- Output 2 (display_data) --
+   precision  recall        f1  balanced_accuracy  false_pos_per_true_pos  tp  \
+0   0.233333    0.14  0.175000           0.558169                3.285714   7   
+1   0.333333    0.08  0.129032           0.535885                2.000000   4   
+2   0.000000    0.00  0.000000           0.500000                0.000000   0   
+3   0.000000    0.00  0.000000           0.500000                0.000000   0   
+4   0.000000    0.00  0.000000           0.500000                0.000000   0   
+
+   fp  threshold  
+0  23       0.20  
+1   8       0.25  
+2   0       0.30  
+3   0       0.35  
+4   0       0.40  -- Output 3 (stream) --
+Selected stacked threshold:
+precision                 0.333333
+recall                    0.080000
+f1                        0.129032
+balanced_accuracy         0.535885
+false_pos_per_true_pos    2.000000
+tp                        4.000000
+fp                        8.000000
+threshold                 0.250000
+Name: 1, dtype: float64
+Stacked ensemble validation metrics @ selected threshold:
+{'precision': 0.3333333333333333, 'recall': 0.08, 'f1': 0.12903225806451613, 'balanced_accuracy': 0.5358847736625515, 'false_pos_per_true_pos': 2.0, 'tp': 4, 'fp': 8}
+
+Stacked ensemble test metrics @ selected threshold:
+{'precision': 0.4, 'recall': 0.08, 'f1': 0.13333333333333333, 'balanced_accuracy': 0.5369135802469136, 'false_pos_per_true_pos': 1.5, 'tp': 4, 'fp': 6}
+
+==== Cell 50 ====
+Source:
+young_cost_log_reg = build_cost_sensitive_logistic(C=0.4, positive_weight=4.0)
+young_cost_log_reg.fit(X_train_young_aug, y_train_young_aug)
+
+young_val_scores = young_cost_log_reg.predict_proba(X_val_aug)[:, 1]
+young_threshold_grid, young_best_threshold = find_threshold_for_ratio(
+    y_val,
+    young_val_scores,
+    thresholds=np.linspace(0.2, 0.8, 13),
+    max_fp_per_tp=3.0
+)
+
+young_threshold = young_best_threshold['threshold']
+young_val_metrics = threshold_metrics(y_val, young_val_scores, young_threshold)
+
+young_test_scores = young_cost_log_reg.predict_proba(X_test_aug)[:, 1]
+young_test_metrics = threshold_metrics(y_test, young_test_scores, young_threshold)
+
+print('Age-aware logistic validation metrics @ selected threshold:')
+print(young_val_metrics)
+print('\nAge-aware logistic test metrics @ selected threshold:')
+print(young_test_metrics)
+Outputs:
+-- Output 1 (stream) --
+Age-aware logistic validation metrics @ selected threshold:
+{'precision': 0.36363636363636365, 'recall': 0.08, 'f1': 0.13114754098360656, 'balanced_accuracy': 0.5363991769547325, 'false_pos_per_true_pos': 1.75, 'tp': 4, 'fp': 7}
+
+Age-aware logistic test metrics @ selected threshold:
+{'precision': 0.3076923076923077, 'recall': 0.08, 'f1': 0.12698412698412698, 'balanced_accuracy': 0.5353703703703704, 'false_pos_per_true_pos': 2.25, 'tp': 4, 'fp': 9}
+
+==== Cell 51 ====
+Source:
+def group_threshold_metrics(model, X_frame, y_true, group_col, threshold, proba_fn=None, min_samples=30):
+    if proba_fn is None:
+        y_scores = model.predict_proba(X_frame)[:, 1]
+    else:
+        y_scores = proba_fn(X_frame)
+    y_pred = (y_scores >= threshold).astype(int)
+    rows = []
+    for group_value in X_frame[group_col].dropna().unique():
+        mask = X_frame[group_col] == group_value
+        if mask.sum() < min_samples:
+            continue
+        rows.append({
+            'group': group_value,
+            'n_samples': mask.sum(),
+            'precision': precision_score(y_true[mask], y_pred[mask], zero_division=0),
+            'recall': recall_score(y_true[mask], y_pred[mask], zero_division=0),
+            'f1': f1_score(y_true[mask], y_pred[mask], zero_division=0),
+            'balanced_accuracy': balanced_accuracy_score(y_true[mask], y_pred[mask])
+        })
+    return pd.DataFrame(rows).set_index('group') if rows else pd.DataFrame()
+
+def stacked_predict_proba(X_frame):
+    stacked_features = np.column_stack([
+        estimator.predict_proba(X_frame)[:, 1]
+        for estimator in fitted_base_models.values()
+    ])
+    return meta_clf.predict_proba(stacked_features)[:, 1]
+
+print('Age bucket metrics – cost-sensitive logistic:')
+cs_age_groups = group_threshold_metrics(cost_sensitive_log_reg, X_test_aug, y_test, 'age_bucket', cs_threshold)
+print(cs_age_groups.to_string() if not cs_age_groups.empty else 'No groups with sufficient samples')
+
+print('Age bucket metrics – age-aware logistic:')
+young_age_groups = group_threshold_metrics(young_cost_log_reg, X_test_aug, y_test, 'age_bucket', young_threshold)
+print(young_age_groups.to_string() if not young_age_groups.empty else 'No groups with sufficient samples')
+
+print('Age bucket metrics – stacked ensemble:')
+stack_age_groups = group_threshold_metrics(None, X_test_aug, y_test, 'age_bucket', stack_threshold, proba_fn=stacked_predict_proba)
+print(stack_age_groups.to_string() if not stack_age_groups.empty else 'No groups with sufficient samples')
+Outputs:
+-- Output 1 (stream) --
+Age bucket metrics – cost-sensitive logistic:
+-- Output 2 (display_data) --
+       n_samples  precision    recall        f1  balanced_accuracy
+group                                                             
+60-79        229   0.222222  0.071429  0.108108           0.518301
+30-44        207   0.000000  0.000000  0.000000           0.500000
+<30          320   0.000000  0.000000  0.000000           0.500000
+45-59        223   0.000000  0.000000  0.000000           0.488479
+80+           43   0.300000  0.600000  0.400000           0.587879-- Output 3 (stream) --
+Age bucket metrics – age-aware logistic:
+-- Output 4 (display_data) --
+       n_samples  precision    recall        f1  balanced_accuracy
+group                                                             
+60-79        229   0.333333  0.071429  0.117647           0.525764
+30-44        207   0.000000  0.000000  0.000000           0.500000
+<30          320   0.000000  0.000000  0.000000           0.500000
+45-59        223   0.000000  0.000000  0.000000           0.495392
+80+           43   0.400000  0.200000  0.266667           0.554545-- Output 5 (stream) --
+Age bucket metrics – stacked ensemble:
+-- Output 6 (display_data) --
+       n_samples  precision    recall        f1  balanced_accuracy
+group                                                             
+60-79        229   0.333333  0.035714  0.064516           0.512882
+30-44        207   0.000000  0.000000  0.000000           0.500000
+<30          320   0.000000  0.000000  0.000000           0.500000
+45-59        223   0.000000  0.000000  0.000000           0.500000
+80+           43   0.428571  0.300000  0.352941           0.589394
+==== Cell 52 ====
+Source:
+model_comparison = {
+    'Baseline Logistic (0.5)': {
+        'precision': best_model_test_metrics['precision'],
+        'recall': best_model_test_metrics['recall'],
+        'f1': best_model_test_metrics['f1'],
+        'balanced_accuracy': best_model_test_metrics['balanced_accuracy'],
+        'false_pos_per_true_pos': 6.1  # from earlier confusion matrix scaling
+    },
+    'Cost-sensitive Logistic': cs_test_metrics,
+    'Age-aware Logistic': young_test_metrics,
+    'Stacked Ensemble': stack_test_metrics
+}
+
+model_comparison_df = pd.DataFrame(model_comparison).T
+model_comparison_df = model_comparison_df[['precision', 'recall', 'f1', 'balanced_accuracy', 'false_pos_per_true_pos']]
+print(model_comparison_df.to_string())
+Outputs:
+-- Output 1 (execute_result) --
+                         precision  recall        f1  balanced_accuracy  \
+Baseline Logistic (0.5)   0.139932    0.82  0.239067           0.780370   
+Cost-sensitive Logistic   0.212121    0.14  0.168675           0.556626   
+Age-aware Logistic        0.307692    0.08  0.126984           0.535370   
+Stacked Ensemble          0.400000    0.08  0.133333           0.536914   
+
+                         false_pos_per_true_pos  
+Baseline Logistic (0.5)                6.100000  
+Cost-sensitive Logistic                3.714286  
+Age-aware Logistic                     2.250000  
+Stacked Ensemble                       1.500000  
